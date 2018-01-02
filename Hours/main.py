@@ -8,15 +8,20 @@ import pandas as pd
 from collections import OrderedDict
 from bokeh.plotting import figure
 from bokeh.layouts import layout, widgetbox
-from bokeh.models import ColumnDataSource, HoverTool, Div, Paragraph, CustomJS
+from bokeh.models import ColumnDataSource, HoverTool, Div, Paragraph, CustomJS, FuncTickFormatter
 from bokeh.models.widgets import Slider, Select, TextInput, CheckboxButtonGroup
 from bokeh.io import curdoc
 from bokeh.models import (
   ColumnDataSource, Line, Range1d, PanTool, WheelZoomTool, BoxSelectTool, DatetimeTickFormatter
 )
 from bokeh.models.widgets import Paragraph, Div
+from bokeh.models.tickers import FixedTicker
 
 conn = sqlite3.connect(str(dirname(abspath(__file__))) + "/hours.sql")
+
+
+########################################
+## Delays
 
 p = figure(plot_width=700, plot_height=400)
 
@@ -52,7 +57,9 @@ p.title.text = 'Predicted Delays'
 p.legend.location = "top_left"
 p.legend.click_policy="hide"
 
-# Histogram ilosci lotow
+
+##############################
+## Number of flights
 
 p2 = figure(plot_width=700, plot_height=400)
 
@@ -74,21 +81,121 @@ p2.title.text = 'Number of flights'
 p2.legend.location = "top_left"
 p2.legend.click_policy="hide"
 
+################################
+## Delays by day of week
+
+
+p3 = figure(plot_width=700, plot_height=400)
+
+flights_dof = psql.read_sql("SELECT * FROM Arr_Delays_vs_DayOfWeek", conn)
+
+carrier_dof = Select(title="Carrier", value="CO",options=open(str(dirname(abspath(__file__))) + "/carriers.txt").read().split())
+
+source_dof = ColumnDataSource(data=dict(day=[], UniqueCarrier=[],  number_of_flights=[], ArrDelay=[]))
+
+p3.line(x="day", y="ArrDelay", line_width=2, source=source_dof, legend="Raw Data")
+
+p3.title.text = 'Predicted Delays by day of week'
+p3.legend.location = "top_left"
+p3.legend.click_policy="hide"
+
+dof = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+p3.xaxis.formatter = FuncTickFormatter(code="""
+    var labels = %s;
+    return labels[tick-1];
+""" % dof)
+
+## Delays by day of week 
+
+p4 = figure(plot_width=700, plot_height=400)
+
+p4.line(x="day", y="number_of_flights", line_width=2, source=source_dof, legend="Raw Data")
+
+p4.title.text = 'Number of flights by day of week'
+p4.legend.location = "top_left"
+p4.legend.click_policy="hide"
+
+p4.xaxis.formatter = FuncTickFormatter(code="""
+    var labels = %s;
+    return labels[tick-1];
+""" % dof)
+
+################################
+## Delays by day of year
+
+
+p5 = figure(plot_width=700, plot_height=400, x_axis_type='datetime')
+
+
+flights_date = psql.read_sql("SELECT * FROM Delays_vs_Date", conn)
+
+flights_date["date_tooltip"] = flights_date["date"]
+flights_date["date"] = pd.to_datetime(flights_date.date)
+
+axis_map = {
+    "Number of flights":            "number_of_flights",
+    "Number of delayed departures": "delay_over_15",
+    "Number of delayed arrivals":   "arrival_over_15",
+    "Mean departure delay":         "depDelay",
+    "Mean arrival delay":           "arrDelay",
+}
+year_date = Slider(title="Year", start=1987, end=2008, value=2008, step=1)
+y_axis = Select(title="Y Axis", options=sorted(axis_map.keys()), value="Number of flights")
+
+source_date = ColumnDataSource(data=dict(date=[], y=[], date_tooltip=[]))
+
+g5 = p5.line(x="date", y="y", line_width=2, source=source_date, legend="Raw Data")
+
+tooltips_date = OrderedDict([
+    ('Dep.: ', '@date_tooltip'),
+])
+p5.add_tools( HoverTool(tooltips=tooltips_date, renderers=[g5]))
+
+p5.title.text = 'Yearlly Patterns'
+p5.legend.location = "bottom_left"
+p5.legend.click_policy="hide"
+p5.xaxis.axis_label = "Date"
+
+p5.y_range.start = 0
+
+
+
+################################
+## Update
 
 def smooth(y, box_pts):
     box = np.ones(box_pts)/box_pts
     y_smooth = np.convolve(y, box, mode='same')
     return y_smooth
 
-def select_movies():
+def select_flights():
     selected = flights[
         flights.UniqueCarrier == carrier.value
     ]   
     return selected
 
-def update():
-    df = select_movies()
+def select_flights_dof():
+    selected = flights_dof[
+        flights_dof.UniqueCarrier == carrier_dof.value
+    ]   
+    return selected
 
+def select_flights_date():
+    selected = flights_date[
+        flights_date.year == year_date.value
+    ]   
+    return selected
+
+def update():
+    
+    #load data
+    df = select_flights()
+
+    df_dof = select_flights_dof()
+
+    df_date = select_flights_date()
+    
+    # update hours
     source.data = dict(
         dep=df["time"],
         delay=df["ArrDelay"],
@@ -98,32 +205,103 @@ def update():
         name=df["UniqueCarrier"],
         time_str=df["time_str"],
     )
-    
-    p.update()
+    # update weak
+    source_dof.data = dict(
+        day=df_dof["day"],
+        UniqueCarrier=df_dof["UniqueCarrier"],
+	number_of_flights=df_dof["number_of_flights"],
+	ArrDelay=df_dof["ArrDelay"],
+    )
+    # update year
 
-# Text
+    p5.yaxis.axis_label = y_axis.value
 
-t1 = Paragraph(text="""
+    source_date.data = dict(
+        date=df_date["date"],
+        y=df_date[axis_map[y_axis.value]],
+        date_tooltip=df_date["date_tooltip"],
+    )
+
+
+##################################################################
+## Texts
+
+title = Div(text="""
+<h1>Time Dependencies</h1>
+""",width=800, height=70)
+
+daily_txt = Div(text="""
+<h2>
+ <ul>
+  <li>Daily patterns</li>
+</ul> 
+</h2>
+""",width=800, height=70)
+
+week_txt = Div(text="""
+<h2>
+ <ul>
+  <li>Weekly patterns</li>
+</ul> 
+</h2>
+""",width=800, height=70)
+
+year_txt = Div(text="""
+<h2>
+ <ul>
+  <li>Yearly patterns</li>
+</ul> 
+</h2>
+""",width=800, height=70)
+
+
+day_concl = Paragraph(text="""
 From above plots we can see...
-""", width=500, height=200)
+""", width=500, height=50)
 
-t2 = Div(text="""
-Plots
-""",width=800, height=200)
+week_concl = Paragraph(text="""
+From above plots we can see...
+""", width=500, height=50)
+
+year_concl = Paragraph(text="""
+From above plots we can see...
+""", width=500, height=50)
 
 
 carrier.on_change('value', lambda attr, old, new: update())
 box_size.on_change('value', lambda attr, old, new: update())
+
+carrier_dof.on_change('value', lambda attr, old, new: update())
+
+year_date.on_change('value', lambda attr, old, new: update())
+y_axis.on_change('value', lambda attr, old, new: update())
 
 sizing_mode = 'fixed' 
 
 controls = [carrier, box_size]
 
 inputs = widgetbox(*controls, sizing_mode=sizing_mode)
+
+
+controls_dof = [carrier_dof]
+
+inputs_dof = widgetbox(*controls_dof, sizing_mode=sizing_mode)
+
+controls_date = [year_date, y_axis]
+
+inputs_date = widgetbox(*controls_date, sizing_mode=sizing_mode)
+
 l = layout([
-    [t2],
+    [title],
+    [daily_txt],
     [inputs, p, p2],
-    [t1]
+    [day_concl],
+    [week_txt],
+    [inputs_dof, p3, p4],
+    [week_concl],
+    [year_txt],
+    [inputs_date, p5],
+    [year_concl],
 
 ], sizing_mode=sizing_mode)
 
