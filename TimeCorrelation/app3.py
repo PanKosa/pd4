@@ -99,6 +99,9 @@ flights_dof = psql.read_sql("SELECT * FROM Arr_Delays_vs_DayOfWeek", conn)
 
 dof = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
+data_week_options = [{'label': "Arrival Delay", 'value': "ArrDelay"}, {'label': "Departure Delay", 'value': "DepDelay"}]
+
+
 flights_date = psql.read_sql("SELECT * FROM Delays_vs_Date", conn)
 
 data_year_options = [{'label': 'Number of flights', 'value': 'number_of_flights'}, {'label': 'Number of delayed departures', 'value': 'delay_over_15'},
@@ -406,7 +409,7 @@ tab3 = html.Div([
                             html.P('Data:'), # dodac ruchoma srednia a potem smotha dac -> czyli te biny z bokeh
 					        dcc.Dropdown(
 					            id='data_week',
-					            options=data_day_options,
+					            options=data_week_options,
 					            multi=False,
 					            value="ArrDelay",
 					        ),
