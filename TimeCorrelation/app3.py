@@ -30,7 +30,7 @@ app.css.append_css({'external_url': 'https://cdn.rawgit.com/plotly/dash-app-styl
 #        'external_url': 'https://cdn.rawgit.com/chriddyp/ca0d8f02a1659981a0ea7f013a378bbd/raw/e79f3f789517deec58f41251f7dbb6bee72c44ab/plotly_ga.js'  # noqa: E501
 #    })
 
-
+#a
 #app.css.config.serve_locally = True
 app.scripts.config.serve_locally = True
 
@@ -75,6 +75,35 @@ flights_map["color"] = np.where(flights_map["prec_delayed"] < 10, 0,
                                np.where((flights_map["prec_delayed"] >= 20) & (flights_map["prec_delayed"] < 25), 3, 4))))
 
 colors_map = ["green", "#b10fc6", "blue", "orange", "red"]
+
+# Periodic time dep
+conn = sqlite3.connect("data/hours.sql")
+#flights_week = psql.read_sql("SELECT * FROM Arr_Delays_vs_time_h24102007", conn)
+flights_week = psql.read_sql("SELECT * FROM Arr_Delays_vs_time_h", conn)
+
+flights_week["time_str"] = "0000" + flights_week["time"].astype(str)
+flights_week["time_str"] = flights_week.time_str.str[-4:]
+flights_week["time_str"] = flights_week.time_str.str[0:2] + ":" + flights_week.time_str.str[2:4]
+flights_week["time"] = pd.to_datetime(flights_week.time_str, format='%H:%M').dt.time
+flights_week["time_date"] = pd.to_datetime(flights_week.time_str, format='%H:%M')
+
+carriers_periodic = open("data/carriers.txt").read().split()
+
+carrier_priodic_options = [{'label': carrier, 'value': carrier} for carrier in carriers_periodic]
+
+carriers_big = open("data/carriers_big.txt").read().split()
+
+data_day_options = [{'label': "Arrival Delay", 'value': "ArrDelay"}, {'label': "Departure Delay", 'value': "DepDelay"}]
+
+flights_dof = psql.read_sql("SELECT * FROM Arr_Delays_vs_DayOfWeek", conn)
+
+dof = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+flights_date = psql.read_sql("SELECT * FROM Delays_vs_Date", conn)
+
+data_year_options = [{'label': 'Number of flights', 'value': 'number_of_flights'}, {'label': 'Number of delayed departures', 'value': 'delay_over_15'},
+                     {'label': 'Number of delayed arrivals', 'value': 'arrival_over_15'}, {'label': 'Mean departure delay', 'value': 'depDelay'},
+                     {'label': 'Mean arrival delay', 'value': 'arrDelay'}]
 
 # Create global chart template
 mapbox_access_token = 'pk.eyJ1IjoiamFja2x1byIsImEiOiJjajNlcnh3MzEwMHZtMzNueGw3NWw5ZXF5In0.fk8k06T96Ml9CLGgKmk81w'  # noqa: E501
@@ -152,6 +181,15 @@ tab1 = html.Div([
 		),
 		html.Div(
 		    [
+			html.Div([
+		        html.Div(
+		            [
+		                dcc.Graph(id = "heatmap")
+		            ],
+		            className='ten columns',
+		            style={'margin-top': '20'}
+		        ),
+			]),
 		        html.Div(
 		            [
 				html.P('Number of corelated plots:'),  # noqa: E501
@@ -185,15 +223,6 @@ tab1 = html.Div([
 		    ],
 		    className='row'
 		),
-			html.Div([
-		        html.Div(
-		            [
-		                dcc.Graph(id = "heatmap")
-		            ],
-		            className='ten columns',
-		            style={'margin-top': '20'}
-		        ),
-			]),
 		html.Div(
 		    [
 		        html.Div(
@@ -218,7 +247,7 @@ tab2 = html.Div([
 		html.Div(
 		    [
 		        html.H1(
-		            'New tab',
+		            'Geo Data',
 		            className='eight columns',
 		        ),
 		    ],
@@ -228,18 +257,35 @@ tab2 = html.Div([
 		    [
 		        html.Div(
 		            [
-				html.P('Number of corelated plots:'),  # noqa: E501
+				html.P('Year:'),  # noqa: E501
 				dcc.Slider(
-				    id='nn2_slider',
-				    min=1,
-				    max=3,
-				    value=3
+				    id='year_map',
+				    min=1987,
+				    max=2008,
+				    value=2008
 		        ),
 		            ],
 		            className='six columns'
 		        ),
 		    ],
 		    style={'margin-top': '20'},
+		    className='row'
+		),
+		html.Div(
+		    [
+		        html.Div(
+		            [
+		                html.P('Carrier:'),
+		                dcc.Dropdown(
+		                    id='iata_map',
+		                    options=carrier_options,
+		                    multi=False,
+		                    value="JFK"
+		                ),
+		            ],
+		            className='six columns'
+		        ),
+		    ],
 		    className='row'
 		),
                 html.Div(
@@ -254,16 +300,201 @@ tab2 = html.Div([
 		    ],
 		    className='row'
 		),
+                html.Div(
+		    [
+		        html.Div(
+		            [
+		                dcc.Graph(id='histogram_map')
+		            ],
+		            className='ten columns',
+		            style={'margin-top': '20'}
+		        ),
+		    ],
+		    className='row'
+		),
 	    ],
 	    className='twelwe columns offset-by-one',
             id = 'tab2'
 	)
         ])
 
+tab3 = html.Div([
+	html.Div(
+	    [
+		html.Div(
+		    [
+		        html.H1(
+		            'Daily dependencies',
+		            className='eight columns',
+		        ),
+		    ],
+		    className='row'
+		),
+		html.Div(
+		    [
+		        html.Div(
+		            [
+                                html.P('Min number of flights:'), # dodac ruchoma srednia a potem smotha dac -> czyli te biny z bokeh
+								dcc.Slider(
+									id='numb_flights',
+									min=1,
+									max=100,
+								    step=1,
+									value=100
+										),   
+                                html.P('Data:'), # dodac ruchoma srednia a potem smotha dac -> czyli te biny z bokeh
+						        dcc.Dropdown(
+						            id='data_day',
+						            options=data_day_options,
+						            multi=False,
+						            value="ArrDelay",
+						        ),
+                                html.P('Box Size:'), # dodac ruchoma srednia a potem smotha dac -> czyli te biny z bokeh
+								dcc.Slider(
+									id='box_size',
+									min=1,
+									max=100,
+								                    step=1,
+									value=80
+										),
+								                html.P('Carriers:'),
+						        dcc.Dropdown(
+						            id='carries_included',
+						            options=carrier_priodic_options,
+						            multi=True,
+						            value=carriers_big,
+						        ),
+	                    ],
+		            className='two columns',
+		            style={'margin-top': '20'}
+		        ),
+		        html.Div(
+		            [
+		                dcc.Graph(id='predicted_delays_daily')
+		            ],
+		            className='eight columns',
+		            style={'margin-top': '20'}
+		        ),
+		    ],
+		    className='row'
+		    ),
+			html.Div(
+				[
+		                    html.Div(
+				        [
+				            dcc.Graph(id = "number_of_flights_daily")
+				        ],
+				        className='eight columns  offset-by-two',
+				        style={'margin-top': '20'}
+				    ),
+				],
+				className='row'
+			),
+            html.Div(
+				[
+				    html.H1(
+				        'Weekly dependencies',
+				        className='eight columns',
+				    ),
+				],
+				className='row'
+		    ),
+		    html.Div(
+		        [
+		        html.Div(
+		                [
+                            html.P('Data:'), # dodac ruchoma srednia a potem smotha dac -> czyli te biny z bokeh
+					        dcc.Dropdown(
+					            id='data_week',
+					            options=data_day_options,
+					            multi=False,
+					            value="ArrDelay",
+					        ),
+							html.P('Carriers:'),
+					        dcc.Dropdown(
+					            id='carries_included_weekly',
+					            options=carrier_priodic_options,
+					            multi=True,
+					            value=carriers_big,
+					        ),
+	                    ],
+		            className='two columns',
+		            style={'margin-top': '20'}
+		        ),
+		        html.Div(
+		            [
+		                dcc.Graph(id='predicted_delays_weekly')
+		            ],
+		            className='eight columns',
+		            style={'margin-top': '20'}
+		        ),
+		    ],
+		    className='row'
+		    ),
+			html.Div(
+				[
+		            html.Div(
+				        [
+				            dcc.Graph(id = "number_of_flights_weekly")
+				        ],
+				        className='eight columns  offset-by-two',
+				        style={'margin-top': '20'}
+				    ),
+				],
+				className='row'
+			),
+            html.Div(
+				[
+				    html.H1(
+				        'Yearly dependencies',
+				        className='eight columns',
+				    ),
+				],
+				className='row'
+		    ),
+		    html.Div(
+		        [
+		        html.Div(
+		                [
+                            html.P('Data:'), # dodac ruchoma srednia a potem smotha dac -> czyli te biny z bokeh
+					        dcc.Dropdown(
+					            id='data_type_year',
+					            options=data_year_options,
+					            multi=False,
+					            value="delay_over_15",
+					        ),
+							html.P('Year:'),
+							dcc.Slider(
+								id='year_data',
+								min=1987,
+								max=2008,
+								value=2008
+							),
+	                    ],
+		            className='two columns',
+		            style={'margin-top': '20'}
+		        ),
+		        html.Div(
+		            [
+		                dcc.Graph(id='predicted_delays_yearly')
+		            ],
+		            className='eight columns',
+		            style={'margin-top': '20'}
+		        ),
+		    ],
+		    className='row'
+		    ),
+			],
+			className='twelwe columns offset-by-one',
+		        id = 'tab3'
+		)
+        ])
+
 tabs=dcc.Tabs(
         tabs=[
             {'label': 'Time Dependencies', 'value': 'tab1'},
-            {'label': 'New Tab', 'value': 'tab2'},
+            {'label': 'Geo Dependencies', 'value': 'tab2'},
+            {'label': 'Periodic Dependencies', 'value': 'tab3'},
         ],
         value='tab1',
         id='tabs',
@@ -279,13 +510,18 @@ tabs=dcc.Tabs(
 app.layout = html.Div([
 	tabs,
 	tab1,
-        tab2
+        tab2,
+        tab3
 	])
 
 
 # In[]:
 # Helper functions
 
+def smooth_avg(y, box_pts):
+    box = np.ones(box_pts)/box_pts
+    y_smooth = np.convolve(y, box, mode='same')
+    return y_smooth
 
 
 # In[]:
@@ -345,19 +581,19 @@ def make_heatmap(nn_slider, carrier_iata):
                        layout=layout_individual) 
     return figure
 
-# map
+# map 
 @app.callback(Output('map', 'figure'),
-              [Input('nn2_slider', 'value')])
-def make_individual_figure(nn_slider):
+              [Input('tabs','value'), Input('year_map', 'value'), Input('iata_map', 'value')])
+def make_individual_figure(x, year_map, iata_map):
     layout_individual = copy.deepcopy(layout)
-    origin = 'JFK'
+
     selected = flights_map[
-        (flights_map.number_of_flights >= 100) &
-        (flights_map.year == 2008) &
-        (flights_map.origin_id == origin)
+        (flights_map.number_of_flights >= 0) &
+        (flights_map.year == year_map) &
+        (flights_map.origin_id == iata_map)
     ] 
     conn = sqlite3.connect("data/map.sql")
-    origin = psql.read_sql("SELECT * FROM airports where iata == '%s'" % 'JFK', conn)
+    origin = psql.read_sql("SELECT * FROM airports where iata == '%s'" % iata_map, conn)
     lats = list(selected['dest_lat'])
     lons = list(selected['dest_lon'])
     kolor = list(selected['color'])
@@ -388,10 +624,374 @@ def make_individual_figure(nn_slider):
         inlegend[kolor[i]] = False
     layout_individual['title'] = 'Most corerlated time serries: '  # noqa: E501
     layout_individual["legend"] = dict(traceorder =  'reversed')
-    figure = dict(data=flight_paths, layout=layout_individual, barmode = "stack")
+    
+
+    groups = [' <= 10% (pkt)', '10% - 15% (pkt)', '15% - 20% (pkt)', '20% - 25% (pkt)', ' >25% (pkt)']
+
+    selected_prec = selected[(selected["prec_delayed"]<10)]
+    hover_m = ['Airport: ' + list(selected_prec["dest_name"])[i] + '<br>' +
+               'Average Delay: ' + str(round(list(selected_prec["DepDelay"])[i]))  + '<br>' +
+               'Number of flights: ' + str(round(list(selected_prec["number_of_flights"])[i],1))  + '<br> ' +
+               'Percentage of flights del. > 15 min: ' + str(round(list(selected_prec["prec_delayed"])[i],1)) + '%'  for i in range(len(selected_prec["dest_name"]))]
+    airports10 = [ dict(
+        type = 'scattergeo',
+        locationmode = 'USA-states',
+        lon = selected_prec['dest_lon'],
+        lat = selected_prec['dest_lat'],
+        hoverinfo = 'text',
+        showlegend = True,
+        name = groups[0],
+        text = hover_m,
+        mode = 'markers',
+        marker = dict( 
+            size=2, 
+            color=colors_map[0],
+        ))]
+    selected_prec = selected[(selected["prec_delayed"]>=10) & (selected["prec_delayed"]<15)]
+    hover_m = ['Airport: ' + list(selected_prec["dest_name"])[i] + '<br>' +
+               'Average Delay: ' + str(round(list(selected_prec["DepDelay"])[i]))  + '<br>' +
+               'Number of flights: ' + str(round(list(selected_prec["number_of_flights"])[i],1))  + '<br> ' +
+               'Percentage of flights del. > 15 min: ' + str(round(list(selected_prec["prec_delayed"])[i],1)) + '%'  for i in range(len(selected_prec["dest_name"]))]
+    airports1015 = [ dict(
+        type = 'scattergeo',
+        locationmode = 'USA-states',
+        lon = selected_prec['dest_lon'],
+        lat = selected_prec['dest_lat'],
+        hoverinfo = 'text',
+        showlegend = True,
+        name = groups[1],
+        text = hover_m,
+        mode = 'markers',
+        marker = dict( 
+            size=2, 
+            color=colors_map[1],
+        ))]
+
+    selected_prec = selected[(selected["prec_delayed"]>=15) & (selected["prec_delayed"]<20)]
+    hover_m = ['Airport: ' + list(selected_prec["dest_name"])[i] + '<br>' +
+               'Average Delay: ' + str(round(list(selected_prec["DepDelay"])[i]))  + '<br>' +
+               'Number of flights: ' + str(round(list(selected_prec["number_of_flights"])[i],1))  + '<br> ' +
+               'Percentage of flights del. > 15 min: ' + str(round(list(selected_prec["prec_delayed"])[i],1)) + '%'  for i in range(len(selected_prec["dest_name"]))]
+    airports1520 = [ dict(
+        type = 'scattergeo',
+        locationmode = 'USA-states',
+        lon = selected_prec['dest_lon'],
+        lat = selected_prec['dest_lat'],
+        hoverinfo = 'text',
+        showlegend = True,
+        name = groups[2],
+        text = hover_m,
+        mode = 'markers',
+        marker = dict( 
+            size=2, 
+            color=colors_map[2],
+        ))]
+
+    selected_prec = selected[(selected["prec_delayed"]>=20) & (selected["prec_delayed"]<25)]
+    hover_m = ['Airport: ' + list(selected_prec["dest_name"])[i] + '<br>' +
+               'Average Delay: ' + str(round(list(selected_prec["DepDelay"])[i]))  + '<br>' +
+               'Number of flights: ' + str(round(list(selected_prec["number_of_flights"])[i],1))  + '<br> ' +
+               'Percentage of flights del. > 15 min: ' + str(round(list(selected_prec["prec_delayed"])[i],1)) + '%'  for i in range(len(selected_prec["dest_name"]))]
+    airports2025 = [ dict(
+        type = 'scattergeo',
+        locationmode = 'USA-states',
+        lon = selected_prec['dest_lon'],
+        lat = selected_prec['dest_lat'],
+        hoverinfo = 'text',
+        showlegend = True,
+        name = groups[3],
+        text = hover_m,
+        mode = 'markers',
+        marker = dict( 
+            size=2, 
+            color=colors_map[3],
+        ))]
+    ('Avg delay: ', '@DepDelay'),
+    ('Num.of.flights: ', '@number_of_flights'),
+    selected_prec = selected[(selected["prec_delayed"]>=25)]
+    hover_m = ['Airport: ' + list(selected_prec["dest_name"])[i] + '<br>' +
+               'Average Delay: ' + str(round(list(selected_prec["DepDelay"])[i]))  + '<br>' +
+               'Number of flights: ' + str(round(list(selected_prec["number_of_flights"])[i],1))  + '<br> ' +
+               'Percentage of flights del. > 15 min: ' + str(round(list(selected_prec["prec_delayed"])[i],1)) + '%'  for i in range(len(selected_prec["dest_name"]))]
+    airports25 = [ dict(
+        type = 'scattergeo',
+        locationmode = 'USA-states',
+        lon = selected_prec['dest_lon'],
+        lat = selected_prec['dest_lat'],
+        hoverinfo = 'text',
+        showlegend = True,
+        name = groups[4],
+        text = hover_m,
+        mode = 'markers',
+        marker = dict( 
+            size=2, 
+            color=colors_map[4],
+        ))]
+
+    origin_map = [ dict(
+        type = 'scattergeo',
+        locationmode = 'USA-states',
+        lon = origin['longitude_deg'],
+        lat = origin['latitude_deg'],
+        hoverinfo = 'text',
+        showlegend = True,
+        name = "origin",
+        text = origin["name"],
+        mode = 'markers',
+        marker = dict( 
+            size=2, 
+            color="black",
+        ))]
+
+    figure = dict(data=flight_paths+airports10+airports1015+airports1520+airports2025+airports25+origin_map, layout=layout_individual, barmode = "stack")
     return figure
 
+# histogram graph
+@app.callback(Output('histogram_map', 'figure'),
+              [Input('tabs','value'), Input('year_map', 'value'), Input('iata_map', 'value')])
+def make_heatmap(x, year_map, iata_map):
+    layout_individual = copy.deepcopy(layout)
+    
+    selected = flights_map[
+        (flights_map.number_of_flights >= 0) &
+        (flights_map.year == year_map) &
+        (flights_map.origin_id == iata_map)
+    ] 
 
+    layout_individual['title'] = 'Histogram rozkladu procentu lotow spoznionych z lotniska %s' % iata_map
+    x = np.random.randn(500)
+
+    figure = go.Figure( data = [go.Histogram(x=selected["prec_delayed"],histnorm='probability')],
+                        layout=layout_individual) 
+
+    return figure
+# SPR MCO dziwne ze 100 sie pojawia na histogramie
+
+# daily delays graph
+@app.callback(Output('predicted_delays_daily', 'figure'),
+              [Input('tabs','value'), Input('carries_included','value'), Input('data_day','value'), Input('box_size','value'), Input('numb_flights','value')])
+def make_delay_daily(x, carries_included, data_day, box_size, numb_flights):
+    layout_individual = copy.deepcopy(layout)
+    all_x = pd.date_range("00:00", "23:59", freq="1min").time
+
+    data = []
+    data.append(
+            go.Scatter(
+                 x = all_x,
+                 y = [0]*len(all_x),
+                 mode = 'lines',
+                 name = 'null',
+                 showlegend = False
+            )
+    )
+
+    for carrier in carries_included:
+        selected = flights_week[
+            (flights_week.UniqueCarrier == carrier) & (flights_week.number_of_flights >= numb_flights)
+        ]
+        if not selected.empty:
+            ts = pd.Series(list(smooth_avg(selected[data_day],box_size)), index=selected["time_date"])
+            ts = ts.resample('T', how='mean')
+            ts = ts.interpolate(method='cubic')
+            data.append(
+		    go.Scatter(
+               x = ts.index.time,
+               y = ts.values,
+#		        x = selected["time"],
+#		        y = smooth_avg(selected["DepDelay"],box_size),
+		        mode = 'lines',
+		        name = carrier,
+		        line=dict(
+		              shape='spline',
+		              smoothing=1.3
+		        )
+		    )
+	    )
+
+    data_day_str = "Departure Delay"
+    if data_day == "ArrDelay":
+        data_day_str = "Arrival Delay"
+
+    layout_individual['title'] = 'Mean %s by time of planned departure' % data_day_str  # noqa: E501
+    layout_individual['legend'] = dict(orientation="v") # noqa: E501
+    layout_individual['xaxis']  = dict(type='hours', range = ['00:00','23:59'])
+
+    figure = go.Figure( data = data,
+                       layout=layout_individual) 
+    return figure
+
+# daily delays graph
+@app.callback(Output('number_of_flights_daily', 'figure'),
+              [Input('tabs','value'), Input('carries_included','value')])
+def make_number_daily(x, carries_included):
+    layout_individual = copy.deepcopy(layout)
+    
+    all_x = pd.date_range("00:00", "23:59", freq="1min").time
+
+    data = []
+    data.append(
+            go.Scatter(
+                 x = all_x,
+                 y = [0]*len(all_x),
+                 mode = 'lines',
+                 name = 'null',
+                 showlegend = False
+            )
+    )
+
+    for carrier in carries_included:
+        selected = flights_week[
+            flights_week.UniqueCarrier == carrier
+        ]
+        data.append(
+            go.Scatter(
+                 x = selected["time"],
+                 y = selected["number_of_flights"],
+                 mode = 'lines',
+                 name = carrier
+            )
+        )
+
+    layout_individual['title'] = 'Number of flights'  # noqa: E501
+    layout_individual['legend'] = dict(orientation="v") # noqa: E501
+    layout_individual['xaxis']  = dict(type='hours', range = ['00:00','23:59'])
+    figure = go.Figure( data = data,
+                       layout=layout_individual) 
+    return figure
+
+# weekly delays graph
+@app.callback(Output('predicted_delays_weekly', 'figure'),
+              [Input('tabs','value'), Input('carries_included_weekly','value'), Input('data_week','value')])
+def make_delay_weekly(x, carries_included_weekly, data_week):
+    layout_individual = copy.deepcopy(layout)
+
+    data = []
+    for carrier in carries_included_weekly:
+        selected = flights_dof[
+            flights_dof.UniqueCarrier == carrier
+        ]
+
+        if not selected.empty:
+            data.append(
+		    go.Scatter(
+               x = selected["day"],
+               y = selected[data_week],
+		       mode = 'lines',
+		       name = carrier
+		    )
+			)
+
+    bandxaxis = go.XAxis(
+		title="Day of week",
+		range=[1, 7],
+		showgrid=True,
+		showline=True,
+		ticks="", 
+		showticklabels=True,
+		mirror=True,
+		linewidth=2,
+		ticktext=dof,
+		tickvals=[i + 1 for i in range(len(dof))]
+	)
+
+    data_day_str = "Departure Delay"
+    if data_week == "ArrDelay":
+        data_day_str = "Arrival Delay"
+
+
+    layout_individual['title'] = 'Mean %s by time of planned departure' % data_day_str  # noqa: E501
+    layout_individual['legend'] = dict(orientation="v") # noqa: E501
+    layout_individual['xaxis'] = bandxaxis
+
+
+    figure = go.Figure( data = data,
+                       layout=layout_individual) 
+    return figure
+
+# weekly number graph
+@app.callback(Output('number_of_flights_weekly', 'figure'),
+              [Input('tabs','value'), Input('carries_included_weekly','value')])
+def make_number_weekly(x, carries_included_weekly):
+    layout_individual = copy.deepcopy(layout)
+
+    data = []
+    for carrier in carries_included_weekly:
+        selected = flights_dof[
+            flights_dof.UniqueCarrier == carrier
+        ]
+
+        if not selected.empty:
+            data.append(
+		    go.Scatter(
+               x = selected["day"],
+               y = selected["number_of_flights"],
+		       mode = 'lines',
+		       name = carrier
+		    )
+			)
+
+    bandxaxis = go.XAxis(
+		title="Day of week",
+		range=[1, 7],
+		showgrid=True,
+		showline=True,
+		ticks="", 
+		showticklabels=True,
+		mirror=True,
+		linewidth=2,
+		ticktext=dof,
+		tickvals=[i + 1 for i in range(len(dof))]
+	)
+
+
+    layout_individual['title'] = 'Number of departures by the day of week'  # noqa: E501
+    layout_individual['legend'] = dict(orientation="v") # noqa: E501
+    layout_individual['xaxis'] = bandxaxis
+
+
+    figure = go.Figure( data = data,
+                       layout=layout_individual) 
+    return figure
+
+# yearly delays graph
+@app.callback(Output('predicted_delays_yearly', 'figure'),
+              [Input('tabs','value'), Input('data_type_year','value'), Input('year_data','value')])
+def make_delay_yearly(x, data_type_year, year_date):
+    layout_individual = copy.deepcopy(layout)
+
+    selected = flights_date[
+        flights_date.year == year_date
+    ]
+
+    data = []
+    data.append(
+		go.Scatter(
+		   x = selected["date"],
+		   y = selected[data_type_year],
+		   mode = 'lines',
+		   name = "Plot"
+		)
+	)
+
+
+
+    data_day_str = "Number of flights"
+    if data_type_year == "delay_over_15":
+        data_day_str = "Number of delayed departures"
+    if data_type_year == "arrival_over_15":
+        data_day_str = "Number of delayed arrivals"
+    if data_type_year == "depDelay":
+        data_day_str = "Mean departure delay"
+    if data_type_year == "arrDelay":
+        data_day_str = "Mean arrival delay"
+
+    layout_individual['title'] = ' %s by time of planned departure in year %s ' % (data_day_str, str(year_date))  # noqa: E501
+    layout_individual['legend'] = dict(orientation="v") # noqa: E501
+    layout_individual['xaxis']  = dict(type='date')
+
+    figure = go.Figure( data = data,
+                       layout=layout_individual) 
+    return figure
 
 # changing tabs
 @app.callback(
@@ -410,6 +1010,16 @@ def update_div1_visible(tab_val):
     ])
 def update_div2_visible(tab_val):
     if tab_val=='tab2':
+        return {'display':'block'}
+    else:
+        return {'display':'none'}
+
+@app.callback(
+    Output('tab3','style'),
+    [Input('tabs','value'),
+    ])
+def update_div3_visible(tab_val):
+    if tab_val=='tab3':
         return {'display':'block'}
     else:
         return {'display':'none'}
