@@ -15,6 +15,8 @@ import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objs as go
 import numpy as np
+from datetime import datetime
+
 
 # In[]:
 # Setup app
@@ -107,6 +109,32 @@ flights_date = psql.read_sql("SELECT * FROM Delays_vs_Date", conn)
 data_year_options = [{'label': 'Number of flights', 'value': 'number_of_flights'}, {'label': 'Number of delayed departures', 'value': 'delay_over_15'},
                      {'label': 'Number of delayed arrivals', 'value': 'arrival_over_15'}, {'label': 'Mean departure delay', 'value': 'depDelay'},
                      {'label': 'Mean arrival delay', 'value': 'arrDelay'}]
+
+# models of planes
+
+conn = sqlite3.connect("data/processed.sql")
+
+manufacturer_names_dt = psql.read_sql("SELECT * FROM Manufacturer_Names", conn)
+
+manufacturer_names = manufacturer_names_dt["manufacturer"]
+
+manufacturer_names = [{'label': mn, 'value': mn} for mn in manufacturer_names]
+
+model_names_dt = psql.read_sql("SELECT * FROM Model_Names", conn)
+
+model_names = ["ALL"]
+
+model_names = [{'label': mn, 'value': mn} for mn in model_names]
+
+features_planes = ["dep_delay", "perc_delayed", "number_of_flights"]
+
+features_planes_names_l = ["Average departure delay", "Percentage delayed (>15 min)", "Number of flights"]
+
+features_planes_names = [{'label': features_planes_names_l[i], 'value': i} for i in range(len(features_planes_names_l))]
+
+planes = psql.read_sql("SELECT * from Model_Performance", conn)
+
+planes["perc_delayed"] = planes["delay_over_15"]/planes["number_of_flights"]
 
 # Create global chart template
 mapbox_access_token = 'pk.eyJ1IjoiamFja2x1byIsImEiOiJjajNlcnh3MzEwMHZtMzNueGw3NWw5ZXF5In0.fk8k06T96Ml9CLGgKmk81w'  # noqa: E501
@@ -493,11 +521,117 @@ tab3 = html.Div([
 		)
         ])
 
+tab4 = html.Div([
+	html.Div(
+	    [
+		html.Div(
+		    [
+		        html.H1(
+		            'Plane performance by manufacturer and model',
+		            className='eight columns',
+		        ),
+		    ],
+		    className='row'
+		),
+		html.Div(
+		    [
+		        html.Div(
+		            [
+		                html.P('Manufacturer:'),
+		                dcc.Dropdown(
+		                    id='manufacturer1',
+		                    options=manufacturer_names,
+		                    multi=False,
+		                    value="ALL"
+		                ),
+		            ],
+		            className='five columns'
+		        ),
+		        html.Div(
+		            [
+		                html.P('Model:'),
+		                dcc.Dropdown(
+		                    id='model1',
+		                    options=model_names,
+		                    multi=False,
+		                    value="ALL"
+		                ),
+		            ],
+		            className='five columns'
+		        ),
+		    ],
+		    className='row'
+		),
+		html.Div(
+		    [
+		        html.Div(
+		            [
+		                html.P('Manufacturer:'),
+		                dcc.Dropdown(
+		                    id='manufacturer2',
+		                    options=manufacturer_names,
+		                    multi=False,
+		                    value="ALL"
+		                ),
+		            ],
+		            className='five columns'
+		        ),
+		        html.Div(
+		            [
+		                html.P('Model:'),
+		                dcc.Dropdown(
+		                    id='model2',
+		                    options=model_names,
+		                    multi=False,
+		                    value="ALL"
+		                ),
+		            ],
+		            className='five columns'
+		        ),
+		    ],
+		    className='row'
+		),
+		html.Div(
+		    [
+		        html.Div(
+		            [
+		                html.P('Metric:'),
+		                dcc.Dropdown(
+		                    id='feature_plane',
+		                    options=features_planes_names,
+		                    multi=False,
+		                    value=0
+		                ),
+		            ],
+		            className='five columns'
+		        ),
+		    ],
+		    className='row'
+		),
+		html.Div(
+		    [
+		        html.Div(
+		            [
+		                dcc.Graph(id='performance')
+		            ],
+		            className='ten columns',
+		            style={'margin-top': '20'}
+		        ),
+		    ],
+		    className='row'
+		),
+	    ],
+	    className='twelwe columns offset-by-one',
+            id = 'tab4'
+	)
+        ])
+
 tabs=dcc.Tabs(
         tabs=[
             {'label': 'Time Dependencies', 'value': 'tab1'},
             {'label': 'Geo Dependencies', 'value': 'tab2'},
             {'label': 'Periodic Dependencies', 'value': 'tab3'},
+            {'label': 'Plane Dependencies', 'value': 'tab4'}
         ],
         value='tab1',
         id='tabs',
@@ -514,7 +648,8 @@ app.layout = html.Div([
 	tabs,
 	tab1,
         tab2,
-        tab3
+        tab3,
+        tab4
 	])
 
 
@@ -529,6 +664,34 @@ def smooth_avg(y, box_pts):
 
 # In[]:
 # Create callbacks
+
+@app.callback(
+    Output('model1', 'options'),
+    [Input('tabs','value'),Input('manufacturer1', 'value')])
+def update_date_dropdown(x, name):
+    models = model_names_dt.loc[model_names_dt["manufacturer"] == name]
+    models = list(models["model"])
+    return [{'label': i, 'value': i} for i in models]
+
+@app.callback(
+    Output('model1', 'value'),
+    [Input('tabs','value'),Input('manufacturer1', 'value')])
+def update_date_dropdown(x, name):
+    return "ALL"
+
+@app.callback(
+    Output('model2', 'options'),
+    [Input('tabs','value'),Input('manufacturer2', 'value')])
+def update_date_dropdown(x, name):
+    models = model_names_dt.loc[model_names_dt["manufacturer"] == name]
+    models = list(models["model"])
+    return [{'label': i, 'value': i} for i in models]
+
+@app.callback(
+    Output('model2', 'value'),
+    [Input('tabs','value'),Input('manufacturer2', 'value')])
+def update_date_dropdown(x, name):
+    return "ALL"
 
 # individual graph
 @app.callback(Output('individual_graph', 'figure'),
@@ -768,7 +931,6 @@ def make_heatmap(x, year_map, iata_map):
                         layout=layout_individual) 
 
     return figure
-# SPR MCO dziwne ze 100 sie pojawia na histogramie
 
 # daily delays graph
 @app.callback(Output('predicted_delays_daily', 'figure'),
@@ -996,6 +1158,64 @@ def make_delay_yearly(x, data_type_year, year_date):
                        layout=layout_individual) 
     return figure
 
+# yearly delays graph
+@app.callback(Output('performance', 'figure'),
+              [Input('tabs','value'),
+               Input('manufacturer1','value'),
+               Input('model1','value'),
+               Input('manufacturer2','value'),
+               Input('model2','value'),
+               Input('feature_plane','value')])
+def planes_comp(x, manufacturer1, model1, manufacturer2, model2, feature_plane):
+    layout_individual = copy.deepcopy(layout)
+
+    plane1 = planes[
+        (planes.manufacturer == manufacturer1) & (planes.model == model1) 
+    ]
+
+    plane2 = planes[
+        (planes.manufacturer == manufacturer2) & (planes.model == model2) 
+    ]
+
+    year = list(plane1["year"])
+    month = list(plane1["month"])
+
+    x1 = [datetime(year[i], month[i], 1) for i in range(len(year))]
+
+    year = list(plane2["year"])
+    month = list(plane2["month"])
+
+    x2 = [datetime(year[i], month[i], 1) for i in range(len(year))]
+
+    feature = features_planes[feature_plane]
+
+    trace0 = go.Scatter(
+        x = x1,
+        y=plane1[feature],
+        name = str(manufacturer1) + ' ' + str(model1)
+    )
+    trace1 = go.Scatter(
+        x=x2,
+        y=plane2[feature],
+        name = str(manufacturer2) + ' ' + str(model2)
+    )
+    data = [trace0, trace1]
+
+    layout_individual = dict(
+        title='Time Series for '+ features_planes_names_l[feature_plane],
+        xaxis=dict(
+            type='date',
+            title='Date',
+        ),
+        yaxis=dict(
+            title=features_planes_names_l[feature_plane],
+        )
+    )
+
+    figure = go.Figure(data = data, layout=layout_individual) 
+
+    return figure
+
 # changing tabs
 @app.callback(
     Output('tab1','style'),
@@ -1026,6 +1246,17 @@ def update_div3_visible(tab_val):
         return {'display':'block'}
     else:
         return {'display':'none'}
+
+@app.callback(
+    Output('tab4','style'),
+    [Input('tabs','value'),
+    ])
+def update_div4_visible(tab_val):
+    if tab_val=='tab4':
+        return {'display':'block'}
+    else:
+        return {'display':'none'}
+
 
 # In[]:
 # Main
